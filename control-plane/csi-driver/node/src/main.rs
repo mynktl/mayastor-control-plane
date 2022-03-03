@@ -21,6 +21,8 @@ use clap::{App, Arg};
 use csi::{identity_server::IdentityServer, node_server::NodeServer};
 use env_logger::{Builder, Env};
 use futures::TryFutureExt;
+use k8s_openapi::api::core::v1::Node as K8sNode;
+use kube::{Api, Client, Resource};
 use nodeplugin_grpc::MayastorNodePluginGrpcServer;
 use std::{
     path::Path,
@@ -110,12 +112,30 @@ impl AsyncWrite for UnixStream {
 
 const GRPC_PORT: u16 = 10199;
 
-// Returns only base hostname, stripping all (sub)domain parts.
-fn normalize_hostname(hostname: &str) -> &str {
-    match hostname.find('.') {
-        Some(idx) => &hostname[0 .. idx],
-        None => hostname,
-    }
+// Get node name from Kubernetes API server.
+pub async fn get_nodename(hostname: &str) -> String {
+    let k8s = Client::try_default()
+        .await
+        .expect("Failed to initialize k8s API client");
+    let nodes: Api<K8sNode> = Api::all(k8s);
+    let node = nodes
+        .get(hostname)
+        .await
+        .unwrap_or_else(|_| panic!("Node '{}' not found in Kubernetes cluster", hostname));
+    let labels = node
+        .meta()
+        .labels
+        .as_ref()
+        .unwrap_or_else(|| panic!("No labels available for node '{}'", hostname));
+    labels
+        .get("kubernetes.io/hostname")
+        .unwrap_or_else(|| {
+            panic!(
+                "No 'kubernetes.io/hostname' label found for node '{}'",
+                hostname
+            )
+        })
+        .to_string()
 }
 
 #[tokio::main]
@@ -169,7 +189,7 @@ async fn main() -> Result<(), String> {
         )
         .get_matches();
 
-    let node_name = normalize_hostname(matches.value_of("node-name").unwrap());
+    let node_name = get_nodename(matches.value_of("node-name").unwrap()).await;
     let endpoint = matches.value_of("grpc-endpoint").unwrap();
     let csi_socket = matches
         .value_of("csi-socket")
@@ -234,7 +254,7 @@ async fn main() -> Result<(), String> {
     };
 
     let _ = tokio::join!(
-        CsiServer::run(csi_socket, node_name),
+        CsiServer::run(csi_socket, &node_name),
         MayastorNodePluginGrpcServer::run(sock_addr.parse().expect("Invalid gRPC endpoint")),
     );
 
