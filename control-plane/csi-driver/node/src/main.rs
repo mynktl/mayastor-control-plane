@@ -34,6 +34,7 @@ use tokio::{
     net::UnixListener,
 };
 use tonic::transport::{server::Connected, Server};
+use tracing::debug;
 
 #[allow(dead_code)]
 #[allow(clippy::type_complexity)]
@@ -127,7 +128,7 @@ pub async fn get_nodename(hostname: &str) -> String {
         .labels
         .as_ref()
         .unwrap_or_else(|| panic!("No labels available for node '{}'", hostname));
-    labels
+    let l = labels
         .get("kubernetes.io/hostname")
         .unwrap_or_else(|| {
             panic!(
@@ -135,7 +136,12 @@ pub async fn get_nodename(hostname: &str) -> String {
                 hostname
             )
         })
-        .to_string()
+        .to_string();
+    debug!(
+        "Retrieved hostname from 'kubernetes.io/hostname' label: {}",
+        l
+    );
+    l
 }
 
 #[tokio::main]
