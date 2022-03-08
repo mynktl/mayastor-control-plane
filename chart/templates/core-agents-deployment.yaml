@@ -22,7 +22,7 @@ spec:
       containers:
         - name: core
           resources: {{- .Values.core.resources | toYaml | nindent 12 }}
-          image: {{ .Values.mayastorCP.registry }}mayadata/mayastor-core:{{ .Values.mayastorCP.tag }}
+          image: {{ .Values.mayastorCP.registry }}datacore/bolt-core:{{ .Values.mayastorCP.tag }}
           imagePullPolicy: {{ .Values.mayastorCP.pullPolicy }}
           args:
             - "-smayastor-etcd"
